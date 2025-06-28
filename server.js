@@ -1,42 +1,56 @@
-const express = require('express');
-const mongoose = require('mongoose');
-const bodyParser = require('body-parser');
-const cors = require('cors');
+import express from 'express';
+import dotenv from 'dotenv';
+import { MongoClient } from 'mongodb';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+dotenv.config();
 
 const app = express();
-app.use(cors());
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
+const port = process.env.PORT || 5000;
 
-// Replace with your MongoDB URI (Atlas or Local)
-mongoose.connect('mongodb://localhost:27017/contactForm', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => console.log('MongoDB Connected'))
-  .catch(err => console.log(err));
+const uri = process.env.MONGODB_URI;
+if (!uri) throw new Error('Please add MONGODB_URI to .env');
 
-// Define schema
-const ContactSchema = new mongoose.Schema({
-  fullname: String,
-  email: String,
-  phone: String,
-  subject: String,
-  message: String
-});
+const client = new MongoClient(uri);
+await client.connect();
+const db = client.db('yuvarajaPortfolio'); // change if needed
+const contacts = db.collection('contacts');
 
-// Create model
-const Contact = mongoose.model('Contact', ContactSchema);
+// Middleware
+app.use(express.json());
 
-// POST route to handle form submission
-app.post('/submit', async (req, res) => {
+// Serve static files
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+app.use(express.static(path.join(__dirname, 'public')));
+
+// API endpoint
+app.post('/api/contact', async (req, res) => {
+  const { fullName, email, phone, subject, message } = req.body;
+
+  if (!fullName || !email || !phone || !subject || !message) {
+    return res.status(400).json({ error: 'All fields are required.' });
+  }
+
   try {
-    const contact = new Contact(req.body);
-    await contact.save();
-    res.send('Message received and saved!');
-  } catch (err) {
-    res.status(500).send('Error saving message: ' + err);
+    await contacts.insertOne({
+      fullName,
+      email,
+      phone,
+      subject,
+      message,
+      createdAt: new Date(),
+    });
+
+    res.status(200).json({ message: 'Message sent successfully!' });
+  } catch (error) {
+    console.error('DB Insert Error:', error);
+    res.status(500).json({ error: 'Error saving your message.' });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
+// Start server
+app.listen(port, () => {
+  console.log(`Server running at http://localhost:${port}`);
+});
